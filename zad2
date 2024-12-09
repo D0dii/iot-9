@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+import time
+import os
+import board
+import neopixel
+import w1thermsensor
+import busio
+import adafruit_bme280.advanced as adafruit_bme280
+from config import *
+
+# Konfiguracja diod WS2812
+NUM_PIXELS = 8
+pixels = neopixel.NeoPixel(board.D18, NUM_PIXELS, brightness=0.2, auto_write=False)
+
+# Funkcja odczytu temperatury z DS18B20
+def read_ds18b20():
+    sensor = w1thermsensor.W1ThermSensor()
+    return sensor.get_temperature()
+
+# Funkcja odczytu danych z BME280
+def read_bme280():
+    i2c = busio.I2C(board.SCL, board.SDA)
+    bme280 = adafruit_bme280.Adafruit_BME280_I2C(i2c, 0x76)
+
+    bme280.sea_level_pressure = 1013.25
+    bme280.standby_period = adafruit_bme280.STANDBY_TC_500
+    bme280.iir_filter = adafruit_bme280.IIR_FILTER_X16
+    bme280.overscan_pressure = adafruit_bme280.OVERSCAN_X16
+    bme280.overscan_humidity = adafruit_bme280.OVERSCAN_X1
+    bme280.overscan_temperature = adafruit_bme280.OVERSCAN_X2
+
+    return {
+        "temperature": bme280.temperature,
+        "humidity": bme280.humidity,
+        "pressure": bme280.pressure,
+        "altitude": bme280.altitude
+    }
+
+# Funkcja wizualizacji temperatury na diodach WS2812
+def visualize_temperature(temp):
+    # Ustaw kolor diod w zależności od temperatury
+    if temp < 20:
+        color = (0, 0, 255)  # Niebieski dla niskiej temperatury
+    elif temp < 30:
+        color = (0, 255, 0)  # Zielony dla umiarkowanej temperatury
+    else:
+        color = (255, 0, 0)  # Czerwony dla wysokiej temperatury
+
+    pixels.fill(color)
+    pixels.show()
+
+# Funkcja wizualizacji wilgotności na diodach WS2812
+def visualize_humidity(humidity):
+    # Im wyższa wilgotność, tym jaśniejszy kolor niebieski
+    brightness = int(humidity * 2.55)
+    pixels.fill((0, 0, brightness))
+    pixels.show()
+
+# Funkcja obsługi czerwonego przycisku
+def stop_program(channel):
+    global running
+    running = False
+    print("\nProgram stopped by red button.")
+
+# Główna funkcja programu
+def main():
+    global running
+    running = True
+
+    # Reakcja na czerwony przycisk
+    GPIO.add_event_detect(buttonRed, GPIO.FALLING, callback=stop_program, bouncetime=200)
+
+    mode = 0  # Tryb wyświetlania (0: temperatura, 1: wilgotność)
+
+    try:
+        while running:
+            ds18b20_temp = read_ds18b20()
+            bme280_data = read_bme280()
+
+            print(f"DS18B20 Temp: {ds18b20_temp:.1f} °C")
+            print(f"BME280 Temp: {bme280_data['temperature']:.1f} °C")
+            print(f"Humidity: {bme280_data['humidity']:.1f} %")
+            print(f"Pressure: {bme280_data['pressure']:.1f} hPa")
+            print(f"Altitude: {bme280_data['altitude']:.2f} m")
+
+            # Wizualizacja w zależności od trybu
+            if mode == 0:
+                visualize_temperature(ds18b20_temp)
+            elif mode == 1:
+                visualize_humidity(bme280_data['humidity'])
+
+            time.sleep(2)
+
+    except KeyboardInterrupt:
+        print("\nProgram interrupted by user.")
+
+    finally:
+        pixels.fill((0, 0, 0))
+        pixels.show()
+        GPIO.cleanup()
+        print("Program finished.")
+
+# Uruchomienie głównej funkcji
+if __name__ == "__main__":
+    if os.getuid() == 0:
+        main()
+    else:
+        print("Root/sudo privileges are required to run this program.")
+
