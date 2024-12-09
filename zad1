@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+
+from config import *
+import RPi.GPIO as GPIO
+import time
+
+# Inicjalizacja zmiennych
+brightness = 50  # Początkowa jasność diody (w procentach)
+step = 10  # Wielkość zmiany jasności przy obrocie enkodera
+
+# Inicjalizacja PWM dla LED 1
+diode1 = GPIO.PWM(led1, 100)  # 100 Hz częstotliwość PWM
+diode1.start(brightness)
+
+# Funkcja obsługi obrotu enkodera w lewo
+def encoderLeftCallback(channel):
+    global brightness
+    if brightness > 0:
+        brightness -= step
+        brightness = max(brightness, 0)
+        print(f"\nJasność zmniejszona: {brightness}%")
+        diode1.ChangeDutyCycle(brightness)
+
+# Funkcja obsługi obrotu enkodera w prawo
+def encoderRightCallback(channel):
+    global brightness
+    if brightness < 100:
+        brightness += step
+        brightness = min(brightness, 100)
+        print(f"\nJasność zwiększona: {brightness}%")
+        diode1.ChangeDutyCycle(brightness)
+
+# Konfiguracja zdarzeń dla enkodera
+GPIO.add_event_detect(encoderLeft, GPIO.FALLING, callback=encoderLeftCallback, bouncetime=200)
+GPIO.add_event_detect(encoderRight, GPIO.FALLING, callback=encoderRightCallback, bouncetime=200)
+
+# Główna funkcja programu
+def main():
+    try:
+        print("\nProgram rozpoczęty. Obracaj enkoderem, aby zmieniać jasność diody LED 1.")
+        while True:
+            time.sleep(0.1)  # Krótki czas oczekiwania w pętli
+    except KeyboardInterrupt:
+        print("\nZakończenie programu.")
+    finally:
+        diode1.stop()
+        GPIO.cleanup()
+
+if __name__ == "__main__":
+    main()
+
